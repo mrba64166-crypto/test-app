@@ -5,24 +5,50 @@ import java.sql.ResultSet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import java.io.File;
+import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Set;
 import java.util.logging.Logger;
 
 public class OWASP_Secure_App {
 
     private static final Logger logger = Logger.getLogger(OWASP_Secure_App.class.getName());
 
-    // ✅ A2: Cryptographic Failures (إزالة البيانات الصلبة)
+    // Allowlist للمضيفين المسموحين (تمنع SSRF)
+    private static final Set<String> ALLOWED_DB_HOSTS = Set.of(
+        "localhost",
+        "127.0.0.1"
+    );
+
+    // ✅ A2 + SSRF FIX
     public Connection connectDB() throws Exception {
-        String url = System.getenv("DB_URL");
+
+        String dbUrl = System.getenv("DB_URL");
         String user = System.getenv("DB_USER");
         String pass = System.getenv("DB_PASS");
 
-        return DriverManager.getConnection(url, user, pass);
+        if (dbUrl == null || user == null || pass == null) {
+            throw new SecurityException("Database configuration missing");
+        }
+
+        // السماح فقط بـ JDBC
+        if (!dbUrl.startsWith("jdbc:mysql://")) {
+            throw new SecurityException("Invalid database protocol");
+        }
+
+        // تحليل الـ URL للتحقق من الـ host
+        URI uri = new URI(dbUrl.replace("jdbc:", ""));
+        String host = uri.getHost();
+
+        if (host == null || !ALLOWED_DB_HOSTS.contains(host)) {
+            throw new SecurityException("SSRF attempt detected: Invalid DB host");
+        }
+
+        return DriverManager.getConnection(dbUrl, user, pass);
     }
 
-    // ✅ A3: Injection (SQL Injection) باستخدام PreparedStatement
+    // ✅ A3: SQL Injection
     public void login(HttpServletRequest request) {
         String sql = "SELECT id FROM users WHERE username = ? AND password = ?";
 
@@ -44,7 +70,7 @@ public class OWASP_Secure_App {
         }
     }
 
-    // ✅ A1: Broken Access Control (التحقق من الصلاحيات)
+    // ✅ A1: Broken Access Control
     public void deleteUser(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
 
@@ -56,12 +82,12 @@ public class OWASP_Secure_App {
         System.out.println("User with ID " + userId + " deleted");
     }
 
-    // ✅ A3: Command Injection (إزالة التنفيذ المباشر)
+    // ✅ A3: Command Injection
     public void executeCommand(HttpServletRequest request) {
         throw new SecurityException("Command execution is disabled");
     }
 
-    // ✅ A5: Path Traversal (تقييد المسار)
+    // ✅ A5: Path Traversal
     public void readFile(HttpServletRequest request) {
         try {
             Path baseDir = Paths.get("/var/data").toRealPath();
@@ -79,9 +105,8 @@ public class OWASP_Secure_App {
         }
     }
 
-    // ✅ A9: Security Logging and Monitoring
+    // ✅ A9: Logging بدون بيانات حساسة
     public void processPayment(String cardNumber) {
-        // تسجيل بدون بيانات حساسة
         logger.info("Payment processed successfully");
     }
 }
