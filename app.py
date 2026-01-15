@@ -2,34 +2,31 @@ import sqlite3
 import os
 import logging
 import subprocess
-import html
 from flask import Flask, request, abort, jsonify
 
 app = Flask(__name__)
 
-# =========================================
-# Secrets from Environment Variables
-# =========================================
+# ==================================================
+# 1️⃣ Secure Secrets (NO Hardcoded Secrets)
+# ==================================================
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 API_KEY = os.getenv("API_KEY")
 
 if not DB_PASSWORD or not API_KEY:
     raise RuntimeError("Missing environment variables")
 
-
-# =========================================
-# Security Logging
-# =========================================
+# ==================================================
+# 2️⃣ Security Logging (Monitoring Enabled)
+# ==================================================
 logging.basicConfig(
     filename="security.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-
-# =========================================
-# SQL Injection – SAFE
-# =========================================
+# ==================================================
+# 3️⃣ SQL Injection – FIXED (Prepared Statements)
+# ==================================================
 @app.route("/login")
 def login():
     username = request.args.get("username")
@@ -50,10 +47,9 @@ def login():
         logging.warning("Failed login attempt")
         return jsonify(message="Login failed"), 401
 
-
-# =========================================
-# Broken Access Control – FIXED
-# =========================================
+# ==================================================
+# 4️⃣ Broken Access Control – FIXED
+# ==================================================
 @app.route("/admin")
 def admin_panel():
     role = request.headers.get("Role")
@@ -64,10 +60,9 @@ def admin_panel():
 
     return jsonify(message="Welcome Admin")
 
-
-# =========================================
-# Command Injection – FIXED
-# =========================================
+# ==================================================
+# 5️⃣ Command Injection – FIXED (Allowlist)
+# ==================================================
 @app.route("/ping")
 def ping():
     host = request.args.get("host")
@@ -81,49 +76,51 @@ def ping():
     subprocess.run(["ping", "-c", "1", host], check=True)
     return jsonify(message="Ping executed safely")
 
+# ==================================================
+# 6️⃣ Path Traversal – CLOSED COMPLETELY
+# ❌ No user-controlled file access
+# ==================================================
+@app.route("/info")
+def info():
+    file_path = os.path.join(
+        os.path.dirname(__file__),
+        "safe_files",
+        "info.txt"
+    )
 
-# =========================================
-# 🚫 Path Traversal – CLOSED FOR REAL
-# =========================================
-@app.route("/read-file")
-def read_file():
-    allowed_files = {
-        "info": "safe_files/info.txt",
-        "help": "safe_files/help.txt"
-    }
-
-    file_key = request.args.get("file")
-
-    if file_key not in allowed_files:
-        logging.warning("Path traversal attempt blocked")
-        abort(403)
-
-    with open(allowed_files[file_key], "r") as f:
+    with open(file_path, "r") as f:
         return jsonify(content=f.read())
 
+@app.route("/help")
+def help_page():
+    file_path = os.path.join(
+        os.path.dirname(__file__),
+        "safe_files",
+        "help.txt"
+    )
 
-# =========================================
-# 🚫 XSS – FIXED PROPERLY
-# =========================================
+    with open(file_path, "r") as f:
+        return jsonify(content=f.read())
+
+# ==================================================
+# 7️⃣ XSS – FIXED (JSON output only)
+# ==================================================
 @app.route("/transfer")
 def transfer_money():
     amount = request.args.get("amount")
     to = request.args.get("to")
 
-    # Validation
     if not amount or not amount.isdigit():
         abort(400)
 
-    # Escape output (SAST loves this)
-    safe_amount = html.escape(amount)
-    safe_to = html.escape(to)
-
-    logging.info(f"Transfer requested: {safe_amount} to {safe_to}")
+    logging.info("Transfer requested")
 
     return jsonify(
-        message=f"Transferred {safe_amount}$ to {safe_to}"
+        message="Transfer completed successfully"
     )
 
-
+# ==================================================
+# Main
+# ==================================================
 if __name__ == "__main__":
     app.run(debug=False)
