@@ -1,32 +1,19 @@
 import sqlite3
 import os
-import logging
-import subprocess
-from flask import Flask, request, abort, jsonify
+from flask import Flask, request
 
 app = Flask(__name__)
 
-# ==================================================
-# 1️⃣ Secure Secrets (NO Hardcoded Secrets)
-# ==================================================
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-API_KEY = os.getenv("API_KEY")
+# =========================================
+# 🔴 1. تخزين بيانات حساسة بشكل غير آمن
+# =========================================
+DB_PASSWORD = "admin123"   # Hardcoded secret
+API_KEY = "sk_test_ABC123" # Sensitive data in source code
 
-if not DB_PASSWORD or not API_KEY:
-    raise RuntimeError("Missing environment variables")
 
-# ==================================================
-# 2️⃣ Security Logging (Monitoring Enabled)
-# ==================================================
-logging.basicConfig(
-    filename="security.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-# ==================================================
-# 3️⃣ SQL Injection – FIXED (Prepared Statements)
-# ==================================================
+# =========================================
+# 🔴 2. حقن SQL (SQL Injection)
+# =========================================
 @app.route("/login")
 def login():
     username = request.args.get("username")
@@ -35,92 +22,62 @@ def login():
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT id FROM users WHERE username = ? AND password = ?",
-        (username, password)
-    )
+    # ❌ SQL Injection vulnerability
+    query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
+    cursor.execute(query)
 
-    if cursor.fetchone():
-        logging.info("Successful login")
-        return jsonify(message="Login successful")
+    result = cursor.fetchone()
+    if result:
+        return "Login successful"
     else:
-        logging.warning("Failed login attempt")
-        return jsonify(message="Login failed"), 401
+        return "Login failed"
 
-# ==================================================
-# 4️⃣ Broken Access Control – FIXED
-# ==================================================
+
+# =========================================
+# 🔴 3. كسر التحكم في الوصول (Broken Access Control)
+# =========================================
 @app.route("/admin")
 def admin_panel():
-    role = request.headers.get("Role")
+    # ❌ No authentication / authorization check
+    return "Welcome to Admin Panel"
 
-    if role != "admin":
-        logging.warning("Unauthorized admin access")
-        abort(403)
 
-    return jsonify(message="Welcome Admin")
-
-# ==================================================
-# 5️⃣ Command Injection – FIXED (Allowlist)
-# ==================================================
+# =========================================
+# 🔴 4. حقن أوامر النظام (Command Injection)
+# =========================================
 @app.route("/ping")
 def ping():
     host = request.args.get("host")
 
-    allowed_hosts = {"8.8.8.8", "1.1.1.1"}
+    # ❌ User input directly passed to OS command
+    os.system("ping -c 1 " + host)
 
-    if host not in allowed_hosts:
-        logging.warning("Blocked command injection attempt")
-        abort(400)
+    return "Ping executed"
 
-    subprocess.run(["ping", "-c", "1", host], check=True)
-    return jsonify(message="Ping executed safely")
 
-# ==================================================
-# 6️⃣ Path Traversal – CLOSED COMPLETELY
-# ❌ No user-controlled file access
-# ==================================================
-@app.route("/info")
-def info():
-    file_path = os.path.join(
-        os.path.dirname(__file__),
-        "safe_files",
-        "info.txt"
-    )
+# =========================================
+# 🔴 5. اجتياز المسارات (Path Traversal)
+# =========================================
+@app.route("/read-file")
+def read_file():
+    filename = request.args.get("file")
 
-    with open(file_path, "r") as f:
-        return jsonify(content=f.read())
+    # ❌ Path Traversal vulnerability
+    with open(filename, "r") as f:
+        return f.read()
 
-@app.route("/help")
-def help_page():
-    file_path = os.path.join(
-        os.path.dirname(__file__),
-        "safe_files",
-        "help.txt"
-    )
 
-    with open(file_path, "r") as f:
-        return jsonify(content=f.read())
-
-# ==================================================
-# 7️⃣ XSS – FIXED (JSON output only)
-# ==================================================
+# =========================================
+# 🔴 6. فشل في تسجيل ومراقبة الأحداث الأمنية
+# =========================================
 @app.route("/transfer")
 def transfer_money():
     amount = request.args.get("amount")
     to = request.args.get("to")
 
-    if not amount or not amount.isdigit():
-        abort(400)
+    # ❌ No logging, no monitoring, no alerts
+    return f"Transferred {amount}$ to {to}"
 
-    logging.info("Transfer requested")
 
-    return jsonify(
-        message="Transfer completed successfully"
-    )
-
-# ==================================================
-# Main
-# ==================================================
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(debug=True)
