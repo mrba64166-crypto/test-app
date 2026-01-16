@@ -1,45 +1,70 @@
 import sqlite3
 import os
-from flask import Flask, request
+from flask import Flask, request, session
 
 app = Flask(__name__)
+app.secret_key = "secret123"  # لتفعيل session
 
 # =========================================
 # 🔴 1. تخزين بيانات حساسة بشكل غير آمن
 # =========================================
-DB_PASSWORD = "admin123"   # Hardcoded secret
-API_KEY = "sk_test_ABC123" # Sensitive data in source code
+DB_PASSWORD = "admin123"
+API_KEY = "sk_test_ABC123"
 
 
 # =========================================
 # 🔴 2. حقن SQL (SQL Injection)
 # =========================================
-@app.route("/login")
-def login():
+@app.route("/login-db")
+def login_db():
     username = request.args.get("username")
     password = request.args.get("password")
 
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
 
-    # ❌ SQL Injection vulnerability
+    # ❌ SQL Injection
     query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
     cursor.execute(query)
 
-    result = cursor.fetchone()
-    if result:
+    if cursor.fetchone():
         return "Login successful"
+    return "Login failed"
+
+
+# =========================================
+# 🔴 آلية تسجيل دخول (لإظهار كسر التحكم)
+# =========================================
+@app.route("/login")
+def login():
+    user = request.args.get("user")
+
+    if user == "admin":
+        session["role"] = "admin"
     else:
-        return "Login failed"
+        session["role"] = "user"
+
+    return f"Logged in as {session['role']}"
+
+
+# =========================================
+# ✅ Endpoint محمي (تحكم صحيح)
+# =========================================
+@app.route("/admin")
+def admin_panel():
+    if session.get("role") != "admin":
+        return "Access Denied", 403
+
+    return "Welcome Admin Panel"
 
 
 # =========================================
 # 🔴 3. كسر التحكم في الوصول (Broken Access Control)
 # =========================================
-@app.route("/admin")
-def admin_panel():
-    # ❌ No authentication / authorization check
-    return "Welcome to Admin Panel"
+@app.route("/admin-debug")
+def admin_debug():
+    # ❌ تجاوز التحقق من الصلاحيات
+    return "Welcome Admin Panel (Authorization Bypassed)"
 
 
 # =========================================
@@ -49,7 +74,7 @@ def admin_panel():
 def ping():
     host = request.args.get("host")
 
-    # ❌ User input directly passed to OS command
+    # ❌ Command Injection
     os.system("ping -c 1 " + host)
 
     return "Ping executed"
@@ -62,20 +87,20 @@ def ping():
 def read_file():
     filename = request.args.get("file")
 
-    # ❌ Path Traversal vulnerability
+    # ❌ Path Traversal
     with open(filename, "r") as f:
         return f.read()
 
 
 # =========================================
-# 🔴 6. فشل في تسجيل ومراقبة الأحداث الأمنية
+# 🔴 6. فشل تسجيل ومراقبة الأحداث الأمنية
 # =========================================
 @app.route("/transfer")
 def transfer_money():
     amount = request.args.get("amount")
     to = request.args.get("to")
 
-    # ❌ No logging, no monitoring, no alerts
+    # ❌ لا يوجد logging أو monitoring
     return f"Transferred {amount}$ to {to}"
 
 
